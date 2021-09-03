@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import logging
+import visualize_metrics as vis
 
 class MetricsExtractor():
     def __init__(self, args):
@@ -134,13 +135,14 @@ class MetricsExtractor():
             for key, value in self.eval_metrics.items():
                 print(f"\n{key}:\n{value}")  
 
-    def metrics_df(self):
+    def metric_dfs(self):
         assert self.train_metrics != {}, "No training metrics have been collected yet"
         assert self.eval_metrics != {}, "There are training metrics, but no eval metrics have been collected yet"
 
         try:
             train_df = pd.DataFrame(data=self.train_metrics)
             eval_df = pd.DataFrame(data=self.eval_metrics)
+            return train_df, eval_df
         except:
             logging.error(
                 """
@@ -158,8 +160,8 @@ class MetricsExtractor():
                 # Train time:   [12.34]s
                 # TOTAL:        [12.34]s
                 """)
-        print(train_df)
-        print(eval_df)
+            return
+        
 
     def get_metrics_dicts(self):
         return self.train_metrics, self.eval_metrics
@@ -179,7 +181,13 @@ if __name__=='__main__':
 
     metr_ex = MetricsExtractor(args)
     metr_ex.extract()
-    metr_ex.metrics_df()
+
+    visualizer = vis.MetricsVisualizer()
+    train, eval = metr_ex.metric_dfs()
+    visualizer.add_metric_to_line_plot(train, "env_steps")
+    visualizer.add_metric_to_line_plot(train, "train_steps")
+    visualizer.show(y_label="time in s")
+
 
     #print(metr_ex.get_metrics_dict())
     
