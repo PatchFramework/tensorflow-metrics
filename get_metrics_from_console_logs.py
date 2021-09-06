@@ -15,6 +15,9 @@ class MetricsExtractor():
         self.debug = args.debug
         self.is_print = args.is_print
         self.start_iteration = args.start_iter
+        self.eval_start_iter = args.eval_start
+        self.eval_interval = args.eval_interval
+
         self.train_metrics = {}
         self.eval_metrics = {}
 
@@ -56,7 +59,7 @@ class MetricsExtractor():
         else:
             print(f"Could not convert value {value}")
             return
-        
+
     def get_regex_group(self, pattern, dtype="str"):
         """
         Takes an a string regex pattern and searches for the first regex group.
@@ -110,20 +113,33 @@ class MetricsExtractor():
                     # pass
 
         return results
+
+    def add_regex_to_collection(self, eval_or_train_metric, metric_name, pattern, dtype="str"):
+        """
+        Collects multiple regex patterns, the name of the metric they belong to and if it is an eval metric or a train metric.
+        The collected data can then be used to read each line of a file only once and comparing each line with every regex.
+        This is a better approach then reading the file anew for every regex comparison.
+        """
     
     def extract(self):
         # Regex we want to collect into a list
-        
-        # Still need to collect the correct iteration where the eval metrics were extracted
-        #self.eval_metrics["iteration"] = self.get_regex_group()
-        self.eval_metrics["eval_time"] = self.get_regex_group('^# Eval time: \[(.*)\]s$', "float")
-        self.eval_metrics["eval_avg_return"] = self.get_regex_group('^# Eval average return: (.*)$', "float")
         
         self.train_metrics["iteration"] = self.get_regex_group('^ ITERATION (.*)$', "int")
         self.train_metrics["env_steps"] = self.get_regex_group('^# Env\. Steps:   (.*)$', "int")
         self.train_metrics["train_steps"] = self.get_regex_group('^# Train Steps:  (.*)$', "int")
         self.train_metrics["collect_time"] = self.get_regex_group('^# Collect time: \[(.*)\]s$', "float")
         self.train_metrics["train_time"] = self.get_regex_group('^# Train time:   \[(.*)\]s$', "float")
+
+        # Still need to collect the correct iteration where the eval metrics were extracted
+        #self.eval_metrics["iteration"] = self.get_regex_group() wouldn't work because its not clear which iteration belongs to each eval step
+        # workaround manually provide the eval start iteration and the iteration steps between evaluations
+        # use the last element in train metrics iteration as the end of the evaluations
+        # NOTE: this only works if the metrics are extracted in sequence it doen't work if they are extracted in parallel
+        self.eval_metrics["iteration"] = list(range(self.eval_start_iter, self.train_metrics["iteration"][-1], self.eval_interval))
+        self.eval_metrics["eval_time"] = self.get_regex_group('^# Eval time: \[(.*)\]s$', "float")
+        self.eval_metrics["eval_avg_return"] = self.get_regex_group('^# Eval average return: (.*)$', "float")
+        
+
 
         if self.is_print:  
             # print the values in the dict
@@ -142,6 +158,9 @@ class MetricsExtractor():
         try:
             train_df = pd.DataFrame(data=self.train_metrics)
             eval_df = pd.DataFrame(data=self.eval_metrics)
+            if self.is_print:
+                print(train_df)
+                print(eval_df)
             return train_df, eval_df
         except:
             logging.error(
@@ -177,17 +196,17 @@ if __name__=='__main__':
     parser.add_argument("-p", "--print", dest='is_print', action='store_true', help="Set this flag if you want to get the metrics printed out to the console. Default: false")
     parser.set_defaults(is_print=False)
     parser.add_argument("-s", "--start_iter", default=0, type=int, help="The first iteration that is provided in the console output. Might be usefull if you didn't start a fresh training. Default: 0")
+    parser.add_argument("-e", "--eval_start", type=int, default=0, help="This is the first iteration in which an evaluation is performed. Default: 0")
+    parser.add_argument("-i", "--eval_interval", type=int, default=5, help="The iterations between one evaluation and the next one. Default: 5")
     args = parser.parse_args()
 
     metr_ex = MetricsExtractor(args)
     metr_ex.extract()
 
+    # experiment with visualizations here
     visualizer = vis.MetricsVisualizer()
     train, eval = metr_ex.metric_dfs()
-    visualizer.add_metric_to_line_plot(train, "env_steps")
+    visualizer.add_metric_to_line_plot(train, "train_time")
     visualizer.add_metric_to_line_plot(train, "train_steps")
     visualizer.show(y_label="time in s")
-
-
-    #print(metr_ex.get_metrics_dict())
     
