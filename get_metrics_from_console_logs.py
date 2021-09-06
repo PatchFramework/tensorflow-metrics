@@ -16,6 +16,22 @@ UNIT_PER_METRIC = {
     "eval_avg_return": "Average Evaluation Return"
 }
 
+# constants for extracting metrics
+# structured the following way: 
+# <name_of_metric>: (<regex_to_extract_metric>, <datatype_as_a_string>)
+TRAIN_METRICS_REGEX = {
+    "iteration": ("^ ITERATION (.*)$", "int"),
+    "env_steps": ("^# Env\. Steps:   (.*)$", "int"),
+    "train_steps": ("^# Train Steps:  (.*)$", "int"),
+    "collect_time": ("^# Collect time: \[(.*)\]s$", "float"), 
+    "train_time": ("^# Train time:   \[(.*)\]s$", "float")
+}
+
+EVAL_METRICS_REGEX = {
+    "eval_time": ("^# Eval time: \[(.*)\]s$", "float"),
+    "eval_avg_return": ("^# Eval average return: (.*)$", "float")
+}
+
 class MetricsExtractor():
     def __init__(self, args):
         """
@@ -136,21 +152,18 @@ class MetricsExtractor():
     def extract(self):
         # Regex we want to collect into a list
         
-        self.train_metrics["iteration"] = self.get_regex_group('^ ITERATION (.*)$', "int")
-        self.train_metrics["env_steps"] = self.get_regex_group('^# Env\. Steps:   (.*)$', "int")
-        self.train_metrics["train_steps"] = self.get_regex_group('^# Train Steps:  (.*)$', "int")
-        self.train_metrics["collect_time"] = self.get_regex_group('^# Collect time: \[(.*)\]s$', "float")
-        self.train_metrics["train_time"] = self.get_regex_group('^# Train time:   \[(.*)\]s$', "float")
+        for metric in TRAIN_METRICS_REGEX.keys():
+            self.train_metrics[metric] = self.get_regex_group(*TRAIN_METRICS_REGEX[metric])
 
         # Still need to collect the correct iteration where the eval metrics were extracted
         #self.eval_metrics["iteration"] = self.get_regex_group() wouldn't work because its not clear which iteration belongs to each eval step
         # workaround manually provide the eval start iteration and the iteration steps between evaluations
         # use the last element in train metrics iteration as the end of the evaluations
         # NOTE: this only works if the metrics are extracted in sequence it doen't work if they are extracted in parallel
+        # This cannot be extracted with a regex
         self.eval_metrics["iteration"] = list(range(self.eval_start_iter, self.train_metrics["iteration"][-1], self.eval_interval))
-        self.eval_metrics["eval_time"] = self.get_regex_group('^# Eval time: \[(.*)\]s$', "float")
-        self.eval_metrics["eval_avg_return"] = self.get_regex_group('^# Eval average return: (.*)$', "float")
-        
+        for metric in EVAL_METRICS_REGEX.keys():
+            self.eval_metrics[metric] = self.get_regex_group(*EVAL_METRICS_REGEX[metric])  
 
 
         if self.is_print:  
