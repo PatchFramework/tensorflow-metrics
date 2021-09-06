@@ -6,6 +6,16 @@ import pandas as pd
 import logging
 import visualize_metrics as vis
 
+# constants for plot labeling
+UNIT_PER_METRIC = {
+    "env_steps": "Number of Steps",
+    "train_steps": "Number of Steps",
+    "collect_time": "Time in Seconds",
+    "train_time": "Time in Seconds",
+    "eval_time": "Time in Seconds",
+    "eval_avg_return": "Average Evaluation Return"
+}
+
 class MetricsExtractor():
     def __init__(self, args):
         """
@@ -17,6 +27,8 @@ class MetricsExtractor():
         self.start_iteration = args.start_iter
         self.eval_start_iter = args.eval_start
         self.eval_interval = args.eval_interval
+        self.is_show = args.is_show
+        self.write_dir = args.write_dir
 
         self.train_metrics = {}
         self.eval_metrics = {}
@@ -114,12 +126,12 @@ class MetricsExtractor():
 
         return results
 
-    def add_regex_to_collection(self, eval_or_train_metric, metric_name, pattern, dtype="str"):
-        """
-        Collects multiple regex patterns, the name of the metric they belong to and if it is an eval metric or a train metric.
-        The collected data can then be used to read each line of a file only once and comparing each line with every regex.
-        This is a better approach then reading the file anew for every regex comparison.
-        """
+    # def add_regex_to_collection(self, eval_or_train_metric, metric_name, pattern, dtype="str"):
+    #     """
+    #     Collects multiple regex patterns, the name of the metric they belong to and if it is an eval metric or a train metric.
+    #     The collected data can then be used to read each line of a file only once and comparing each line with every regex.
+    #     This is a better approach then reading the file anew for every regex comparison.
+    #     """
     
     def extract(self):
         # Regex we want to collect into a list
@@ -150,6 +162,32 @@ class MetricsExtractor():
             print("########## Eval metrics ##########")
             for key, value in self.eval_metrics.items():
                 print(f"\n{key}:\n{value}")  
+        
+        # If visualizations should be shown or saved
+        is_write_dir = self.write_dir not in ["", None]
+        if self.is_show or is_write_dir:
+            visualizer = vis.MetricsVisualizer()
+            train, eval = self.metric_dfs()
+            train_metrics = [m for m in self.train_metrics.keys() if m != "iteration"]
+            eval_metrics = [m for m in self.eval_metrics.keys() if m != "iteration"]
+
+            # visualize all metrics save and/or show the plots
+            for metric in train_metrics:
+                visualizer.add_metric_to_line_plot(train, metric)
+                if self.is_show:
+                    visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+                if is_write_dir:
+                    # Implement logic
+                    pass
+                    
+            for metric in eval_metrics:
+                visualizer.add_metric_to_line_plot(eval, metric)
+                if self.is_show:
+                    visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+                if is_write_dir:
+                    # Implement logic
+                    pass
+                
 
     def metric_dfs(self):
         assert self.train_metrics != {}, "No training metrics have been collected yet"
@@ -196,17 +234,32 @@ if __name__=='__main__':
     parser.add_argument("-p", "--print", dest='is_print', action='store_true', help="Set this flag if you want to get the metrics printed out to the console. Default: false")
     parser.set_defaults(is_print=False)
     parser.add_argument("-s", "--start_iter", default=0, type=int, help="The first iteration that is provided in the console output. Might be usefull if you didn't start a fresh training. Default: 0")
-    parser.add_argument("-e", "--eval_start", type=int, default=0, help="This is the first iteration in which an evaluation is performed. Default: 0")
+    parser.add_argument("-e", "--eval_start", type=int, default=-1, help="This is the first iteration in which an evaluation is performed. Default: -1 (before first training iteration)")
     parser.add_argument("-i", "--eval_interval", type=int, default=5, help="The iterations between one evaluation and the next one. Default: 5")
+    parser.add_argument("-w","--write_dir", type=str, default="", help="If you set a directory here the ploted metrics are saved to that directory if it exists. Default: Nothing is saved")
+    parser.add_argument("--show", dest='is_show', action='store_true', help="Set this flag if you want to get the metrics displayed in plots. Default: false")
+    parser.set_defaults(show=False)
     args = parser.parse_args()
 
     metr_ex = MetricsExtractor(args)
     metr_ex.extract()
 
-    # experiment with visualizations here
-    visualizer = vis.MetricsVisualizer()
-    train, eval = metr_ex.metric_dfs()
-    visualizer.add_metric_to_line_plot(train, "train_time")
-    visualizer.add_metric_to_line_plot(train, "train_steps")
-    visualizer.show(y_label="time in s")
+    # # experiment with visualizations here
+    # visualizer = vis.MetricsVisualizer()
+    # train, eval = metr_ex.metric_dfs()
+    
+
+    # train_metrics = [m for m in metr_ex.train_metrics.keys() if m != "iteration"]
+    # eval_metrics = [m for m in metr_ex.eval_metrics.keys() if m != "iteration"]
+
+    # # show all metrics
+    # for metric in train_metrics:
+    #     visualizer.add_metric_to_line_plot(train, metric)
+    #     visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+
+    # for metric in eval_metrics:
+    #     visualizer.add_metric_to_line_plot(eval, metric)
+    #     visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+    
+
     
