@@ -18,7 +18,7 @@ UNIT_PER_METRIC = {
 
 # constants for extracting metrics
 # structured the following way: 
-# <name_of_metric>: (<regex_to_extract_metric>, <datatype_as_a_string>)
+# <name_of_metric>: (<regex_to_extract_metric>, <datatype_as_a_string (optional)>)
 TRAIN_METRICS_REGEX = {
     "iteration": ("^ ITERATION (.*)$", "int"),
     "env_steps": ("^# Env\. Steps:   (.*)$", "int"),
@@ -73,19 +73,19 @@ class MetricsExtractor():
                 res = int(value)
                 return res
             except:
-                print(f"Could not convert value {value} to int")
+                logging.warn(f"Could not convert value {value} to int")
                 return value
         elif type == "float":
             try:
                 res = float(value)
                 return res
             except:
-                print(f"Could not convert value {value} to float")
+                logging.warn(f"Could not convert value {value} to float")
                 return value
         elif type == "str" or type == "string":
                 return value
         else:
-            print(f"Could not convert value {value}")
+            logging.warn(f"Could not convert value {value}")
             return
 
     def get_regex_group(self, pattern, dtype="str"):
@@ -135,10 +135,11 @@ class MetricsExtractor():
                     else:
                         if self.debug:
                             print(f"Did not find pattern: {pattern}")
+                        logging.debug(f"Did not find pattern: {pattern}")
                 except:
                     if self.debug:
                         print(f"Error in regex solution or conversion of regex result")
-                    # pass
+                    logging.debug(f"Error in regex solution or conversion of regex result")
 
         return results
 
@@ -168,13 +169,17 @@ class MetricsExtractor():
 
         if self.is_print:  
             # print the values in the dict
+            logging.info("########## Training metrics ##########")
             print("########## Training metrics ##########")
             for key, value in self.train_metrics.items():
                 print(f"\n{key}:\n{value}")  
+                logging.info(f"\n{key}:\n{value}")
             
+            logging.info("########## Eval metrics ##########")
             print("########## Eval metrics ##########")
             for key, value in self.eval_metrics.items():
-                print(f"\n{key}:\n{value}")  
+                print(f"\n{key}:\n{value}")
+                logging.info(f"\n{key}:\n{value}")
         
         # If visualizations should be shown or saved
         is_write_dir = self.write_dir not in ["", None]
@@ -187,19 +192,11 @@ class MetricsExtractor():
             # visualize all metrics save and/or show the plots
             for metric in train_metrics:
                 visualizer.add_metric_to_line_plot(train, metric)
-                if self.is_show:
-                    visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
-                if is_write_dir:
-                    # Implement logic
-                    pass
-                    
+                visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+
             for metric in eval_metrics:
                 visualizer.add_metric_to_line_plot(eval, metric)
-                if self.is_show:
-                    visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
-                if is_write_dir:
-                    # Implement logic
-                    pass
+                visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
                 
 
     def metric_dfs(self):
@@ -212,9 +209,27 @@ class MetricsExtractor():
             if self.is_print:
                 print(train_df)
                 print(eval_df)
+                logging.info(train_df)
+                logging.info(eval_df)
             return train_df, eval_df
         except:
             logging.error(
+                """
+                Dataframe of training metrics could not be created.
+                This is probably due to incomplete information about an iteration in the beginning or the end of the file.
+                Make sure there are only blocks that all belong to one iteration, like so:
+                ------------------------------------------------------------------------
+                ITERATION 123
+                ------------------------------------------------------------------------
+                # Episodes:     1234
+                # Env. Steps:   1234
+                # Train Steps:  1234
+
+                # Collect time: [12.34]s
+                # Train time:   [12.34]s
+                # TOTAL:        [12.34]s
+                """)
+            print(
                 """
                 Dataframe of training metrics could not be created.
                 This is probably due to incomplete information about an iteration in the beginning or the end of the file.
@@ -256,23 +271,5 @@ if __name__=='__main__':
 
     metr_ex = MetricsExtractor(args)
     metr_ex.extract()
-
-    # # experiment with visualizations here
-    # visualizer = vis.MetricsVisualizer()
-    # train, eval = metr_ex.metric_dfs()
-    
-
-    # train_metrics = [m for m in metr_ex.train_metrics.keys() if m != "iteration"]
-    # eval_metrics = [m for m in metr_ex.eval_metrics.keys() if m != "iteration"]
-
-    # # show all metrics
-    # for metric in train_metrics:
-    #     visualizer.add_metric_to_line_plot(train, metric)
-    #     visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
-
-    # for metric in eval_metrics:
-    #     visualizer.add_metric_to_line_plot(eval, metric)
-    #     visualizer.show(start_y_at=0, y_label=UNIT_PER_METRIC[metric])
-    
 
     
