@@ -38,11 +38,12 @@ EVAL_METRICS_REGEX = {
 COLOR_CODE_REGEX = "\x1b\[[0-9;]*[a-zA-Z]"
 
 class MetricsExtractor():
-    def __init__(self, args):
+    def __init__(self, args, use_file_idx):
         """
         Read and save the flags parsed on the console.
         """
-        self.file = args.file
+        self.file = args.file[use_file_idx]
+        self.is_multiple_files = len(args.file) > 1
         self.debug = args.debug
         self.is_print = args.is_print
         self.start_iteration = args.start_iter
@@ -66,6 +67,16 @@ class MetricsExtractor():
         self.color_regex = re.compile(COLOR_CODE_REGEX)
         # whether to clean the input stream or not
         self.is_not_clean = COLOR_CODE_REGEX == ""
+
+        self.df = {
+            "train": None,
+            "eval": None
+        }
+        # holds the name of the metrics that should be visualized
+        self.visualize = {
+            "train": [],
+            "eval": []
+        }
 
     def clean_stream_from_color_coding(self, line):
         """
@@ -157,8 +168,6 @@ class MetricsExtractor():
         The type you want to convert the value to. Use string format.
         Available options are: 'int', 'float', 'str', 'string'
         """
-        results = {}
-
         print(f"reading file {self.file}...")
         with open(self.file, 'r') as f:
 
@@ -255,22 +264,26 @@ class MetricsExtractor():
                     logging.info(f"\n{key}:\n{value}")
             
         
-        # If visualizations should be shown or saved
+        # If visualizations should be shown or saved imediately
         is_write_dir = self.write_dir not in ["", None]
         if self.is_show or is_write_dir:
-            visualizer = vis.MetricsVisualizer()
-            train, eval = self.metric_dfs()
-            train_metrics = [m for m in self.metrics["train"].keys() if m != "iteration"]
-            eval_metrics = [m for m in self.metrics["eval"].keys() if m != "iteration"]
+            self.df["train"], self.df["eval"] = self.metric_dfs()
+            self.visualize["train"]  = [m for m in self.metrics["train"].keys() if m != "iteration"]
+            self.visualize["eval"] = [m for m in self.metrics["eval"].keys() if m != "iteration"]
+            
+            # If there are multiple input logs, don't visualize everythin now
+            # just save the data for visualization later
+            if not self.is_multiple_files:
+                visualizer = vis.MetricsVisualizer()
 
-            # visualize all metrics save and/or show the plots
-            for metric in train_metrics:
-                visualizer.add_metric_to_line_plot(train, metric)
-                visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+                # visualize all metrics save and/or show the plots
+                for metric in self.visualize["train"]:
+                    visualizer.add_metric_to_line_plot(self.df["train"], metric)
+                    visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
 
-            for metric in eval_metrics:
-                visualizer.add_metric_to_line_plot(eval, metric)
-                visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+                for metric in self.visualize["eval"]:
+                    visualizer.add_metric_to_line_plot(self.df["eval"], metric)
+                    visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
                 
 
     def metric_dfs(self):
@@ -278,6 +291,9 @@ class MetricsExtractor():
         assert self.metrics["eval"] != {}, "There are training metrics, but no eval metrics have been collected yet"
 
         try:
+            logging.debug("Starting dataframe creation")
+            if self.debug:
+                print("Starting dataframe creation")
             train_df = pd.DataFrame(data=self.metrics["train"])
             eval_df = pd.DataFrame(data=self.metrics["eval"])
             if self.is_print:
@@ -302,6 +318,10 @@ class MetricsExtractor():
                 # Collect time: [12.34]s
                 # Train time:   [12.34]s
                 # TOTAL:        [12.34]s
+
+                OR
+
+                Maybe you haven't set the --eval_start flag correctly
                 """)
             print(
                 """
@@ -318,6 +338,10 @@ class MetricsExtractor():
                 # Collect time: [12.34]s
                 # Train time:   [12.34]s
                 # TOTAL:        [12.34]s
+                
+                OR
+
+                Maybe you haven't set the --eval_start flag correctly
                 """)
             return
 
@@ -327,7 +351,13 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
 
     # Flags
-    parser.add_argument("-f", "--file", help="the log file from which the data is read", type=str)
+    # parser.add_argument("-f", "--file", help="the log file from which the data is read", type=str)
+    
+    parser.add_argument("-f", "--file", action="append", help="the log file from which the data is read.\
+         You can use this flag multiple times, if you want to compare metrics from different runs.\
+             This option may cause problems with runs that don't start at iteration 0. ", type=str)
+    parser.add_argument("-l","--label", action="append", help="A label that will be used in the legend of a plot. \
+        Use this flag once for each file that is provided with the -f/--file flag. Default: None")
     parser.add_argument("-d", "--debug", dest='debug', action='store_true', help="Set this option to get debugging information. Default: false")
     parser.set_defaults(debug=False)
     parser.add_argument("-p", "--print", dest='is_print', action='store_true', help="Set this flag if you want to get the metrics printed out to the console. Default: false")
@@ -340,7 +370,59 @@ if __name__=='__main__':
     parser.set_defaults(show=False)
     args = parser.parse_args()
 
-    metr_ex = MetricsExtractor(args)
-    metr_ex.extract()
+    
+
+    try:
+        # create one metrics extractor object per file provided
+        extractors = [MetricsExtractor(args, use_file_idx=idx) for idx in range(len(args.file))]
+        print(extractors)
+        for ex in extractors:
+            # This will visualize and save plots if there is only one file provided
+            # if there are multiple files it will just save train_df, eval_df and visualize in state
+            # They can then be used to visualize the metrics from different runs in the same plot
+            ex.extract()
+
+        # visualize the same metrics of multiple runs in the same plot
+        if len(args.file) > 1:
+            visualizer = vis.MetricsVisualizer()
+            
+            # Get info from an extractor about the metrics that should be visualized
+            for kind_of_metric, metric_list in extractors[0].visualize.items(): 
+                # TODO: check if all extractors have that metric
+                # TODO: add try except
+                
+                for metric in metric_list:
+                    # Add the metric for each extracted file to the plot
+                    for ex_id, ex in enumerate(extractors):
+                        # plot the train of eval df of this specific extractor, with the name of the metric and 
+                        # the label (-l) that was provided together with the respective -f flag
+                        
+                        # TODO: add try/except here
+                        
+                        if args.debug:
+                            print(f"Determining labels for extractor {ex_id}: {ex}")
+                        logging.debug(f"Determining labels for extractor {ex_id}: {ex}")
+                        # determine the label for this ploted extractor metric 
+                        if args.label is not None and len(args.label) >= ex_id:
+                            label = args.label[ex_id]
+                        # otherwise use no labels
+                        else:
+                            label = None
+                        
+                        if args.debug:
+                            print(f"Adding metric {metric} from extractor {ex_id}: {ex} with label {label} to the plot")
+                        logging.debug(f"Adding metric {metric} from extractor {ex_id}: {ex} with label {label} to the plot")
+
+                        visualizer.add_metric_to_line_plot(ex.df[kind_of_metric], metric, label)
+                    
+                    if args.debug:
+                        print(f"visualizing plot for metric {metric}")
+                    logging.debug(f"visualizing plot for metric {metric}")
+                    # visualize this metric
+                    visualizer.show(args.is_show, args.write_dir, y_label=UNIT_PER_METRIC[metric], start_y_at=0)
+
+    except:
+        print("Error: you need to provide at leased one console log file as input")
+        logging.error("Error: you need to provide at leased one console log file as input")
 
     

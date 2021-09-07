@@ -11,6 +11,7 @@ class MetricsVisualizer():
         self.current_y_max = None
         self.current_x_max = None
         self.current_x_min = None
+        self.current_metric = None
         self.current_legend_labels = []
         self.permanent_save_dir = None
 
@@ -33,10 +34,10 @@ class MetricsVisualizer():
 
         # if no legend label provided use the name of the metric
         # otherwise use the provided label
-        if legend_label is None:
-            self.current_legend_labels.append(metric_name)
-        else:
+        if legend_label is not None:
             self.current_legend_labels.append(legend_label)
+        # save the name of the metric
+        self.current_metric = metric_name
 
     def create_plot_dir(self, dir):
         """
@@ -55,6 +56,7 @@ class MetricsVisualizer():
         self.current_y_max = None
         self.current_x_max = None
         self.current_x_min = None
+        self.current_metric = None
         self.current_legend_labels = []
         # Don't clean the permanent_save_dir
 
@@ -74,10 +76,10 @@ class MetricsVisualizer():
             # default to 0 as first iteration and let matplotlib determine the upper limit
             plt.xlim([0, None])
         
-        if len(self.current_legend_labels) == 1:
-            # if there is only one metric plotted use subtitle instead of legend
-            plt.title(self.current_legend_labels[0])
-        elif len(self.current_legend_labels) > 1:
+        # if there is only one metric plotted use subtitle instead of legend
+        plt.title(self.current_metric)
+        # Use a legend if there is more than one metric
+        if len(self.current_legend_labels) > 1:
             # use the names of the metrics in the legend
             plt.legend(labels=self.current_legend_labels)
         else:
