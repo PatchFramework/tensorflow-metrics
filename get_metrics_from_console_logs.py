@@ -19,6 +19,7 @@ UNIT_PER_METRIC = {
 # constants for extracting metrics
 # structured the following way: 
 # <name_of_metric>: (<regex_to_extract_metric>, <datatype_as_a_string (optional)>)
+# NOTE: The parantheses are required
 TRAIN_METRICS_REGEX = {
     "iteration": ("^ ITERATION (.*)$", "int"),
     "env_steps": ("^# Env\. Steps:   (.*)$", "int"),
@@ -46,8 +47,19 @@ class MetricsExtractor():
         self.is_show = args.is_show
         self.write_dir = args.write_dir
 
+        self.metrics = {
+            "train": {},
+            "eval": {}
+        }
         self.train_metrics = {}
         self.eval_metrics = {}
+
+        # list of compiled regex patterns
+        self.patterns = {
+            "train": {},
+            "eval": {}
+        }
+        self.metric_dtypes = {}
 
     def cast_to(self, value, type):
         """
@@ -88,7 +100,21 @@ class MetricsExtractor():
             logging.warn(f"Could not convert value {value}")
             return
 
-    def get_regex_group(self, pattern, dtype="str"):
+    def construct_metrics_dict(self, kind_of_metric, metric):
+        """
+        Create empty lists in the metrics dict, so that the values 
+        for that metric can be appended in the next steps.
+        """
+        self.metrics[kind_of_metric][metric] = []
+
+    def compile_regex(self, kind_of_metric, title, pattern):
+        """
+        Use the provided regex string pattern to compile it and save it in state.
+        """
+        pat = re.compile(pattern)
+        self.patterns[kind_of_metric][title] = pat
+
+    def get_regex_groups(self):
         """
         Takes an a string regex pattern and searches for the first regex group.
         
@@ -114,34 +140,45 @@ class MetricsExtractor():
         The type you want to convert the value to. Use string format.
         Available options are: 'int', 'float', 'str', 'string'
         """
-        results = []
-
-        # patterns
-        pat = re.compile(pattern)
+        results = {}
 
         print(f"reading file {self.file}...")
         with open(self.file, 'r') as f:
-            for line in f:
-                #print(line)
-                try:
-                    # find the pattern in the line
-                    match = pat.findall(line)
-                    if match != []:
-                        # It always returns a list of groups (e.g. "(.*)") 
-                        # but there is only one group, therefore [0]
-                        hit = match[0]
-                        hit = self.cast_to(hit, dtype)
-                        results.append(hit)
-                    else:
-                        if self.debug:
-                            print(f"Did not find pattern: {pattern}")
-                        logging.debug(f"Did not find pattern: {pattern}")
-                except:
-                    if self.debug:
-                        print(f"Error in regex solution or conversion of regex result")
-                    logging.debug(f"Error in regex solution or conversion of regex result")
 
-        return results
+            for line in f:
+                for kind_of_metric, m_dict in self.patterns.items():
+                    # kind_of_metric is "train" or "eval"
+                    # m_dict is a dictionary that holds the metrics(key) and a list of their values(value)
+                
+                    # check the line for all patterns
+                    for title, pattern in m_dict.items():
+                        try:
+                            # find the pattern in the line
+                            match = pattern.findall(line)
+                            # if there was a match (match not empty)
+                            if match != []:
+                                # It always returns a list of groups (e.g. "(.*)") 
+                                # but there is only one group in each regex, therefore [0]
+                                hit = match[0]
+                                
+                                # Read the respective data type or use str if it's not specified
+                                if title in self.metric_dtypes.keys():
+                                    d_type = self.metric_dtypes[title]
+                                else:
+                                    d_type = "str"
+                                # convert the datatype
+                                hit = self.cast_to(hit, d_type)
+
+                                # Append the value to the metric to the list with the metric title
+                                self.metrics[kind_of_metric][title].append(hit)
+                            else:
+                                if self.debug:
+                                    print(f"Did not find pattern: {pattern}")
+                                logging.debug(f"Did not find pattern: {pattern}")
+                        except:
+                            if self.debug:
+                                print(f"Error in regex solution or conversion of regex result")
+                            logging.debug(f"Error in regex solution or conversion of regex result")     
 
     # def add_regex_to_collection(self, eval_or_train_metric, metric_name, pattern, dtype="str"):
     #     """
@@ -151,43 +188,61 @@ class MetricsExtractor():
     #     """
     
     def extract(self):
-        # Regex we want to collect into a list
-        
-        for metric in TRAIN_METRICS_REGEX.keys():
-            self.train_metrics[metric] = self.get_regex_group(*TRAIN_METRICS_REGEX[metric])
+        # Regex we want to compile and collect into a list
+        for metric, tuple in TRAIN_METRICS_REGEX.items():
+            self.construct_metrics_dict("train", metric)
+            # tuple is structured like this: (<regex_to_extract_metric>, <datatype_as_a_string (optional)>)
+            self.compile_regex("train", metric, tuple[0])
+            if len(tuple) >=2:
+                # as the datatype is optional this might throw an error
+                self.metric_dtypes[metric] = tuple[1]
+            else:
+                if self.debug:
+                    print(f"No datatype provided for metric {metric}")
+                logging.debug(f"No datatype provided for metric {metric}")
+
+            # self.train_metrics[metric] = self.get_regex_group(*tuple)
+        for metric, tuple in EVAL_METRICS_REGEX.items():
+            self.construct_metrics_dict("eval", metric)
+            # tuple is structured like this: (<regex_to_extract_metric>, <datatype_as_a_string (optional)>)
+            self.compile_regex("eval", metric, tuple[0])
+            if len(tuple) >=2:
+                # as the datatype is optional this might throw an error
+                self.metric_dtypes[metric] = tuple[1]
+            else:
+                if self.debug:
+                    print(f"No datatype provided for metric {metric}")
+                logging.debug(f"No datatype provided for metric {metric}")
+
+        # Now check each line for that collection of patterns
+        self.get_regex_groups()
 
         # Still need to collect the correct iteration where the eval metrics were extracted
         #self.eval_metrics["iteration"] = self.get_regex_group() wouldn't work because its not clear which iteration belongs to each eval step
         # workaround manually provide the eval start iteration and the iteration steps between evaluations
         # use the last element in train metrics iteration as the end of the evaluations
         # NOTE: this only works if the metrics are extracted in sequence it doen't work if they are extracted in parallel
-        # This cannot be extracted with a regex
-        self.eval_metrics["iteration"] = list(range(self.eval_start_iter, self.train_metrics["iteration"][-1], self.eval_interval))
-        for metric in EVAL_METRICS_REGEX.keys():
-            self.eval_metrics[metric] = self.get_regex_group(*EVAL_METRICS_REGEX[metric])  
+        # Eval metrics iterations cannot be extracted with a regex
+        self.metrics["eval"]["iteration"] = list(range(self.eval_start_iter, self.metrics["train"]["iteration"][-1], self.eval_interval))
 
 
         if self.is_print:  
             # print the values in the dict
-            logging.info("########## Training metrics ##########")
-            print("########## Training metrics ##########")
-            for key, value in self.train_metrics.items():
-                print(f"\n{key}:\n{value}")  
-                logging.info(f"\n{key}:\n{value}")
+            for kind_of_metric, m_dict in self.metrics.items():
+                logging.info(f"########## {kind_of_metric} metrics ##########")
+                print(f"########## {kind_of_metric} metrics ##########")
+                for key, value in m_dict.items():
+                    print(f"\n{key}:\n{value}")  
+                    logging.info(f"\n{key}:\n{value}")
             
-            logging.info("########## Eval metrics ##########")
-            print("########## Eval metrics ##########")
-            for key, value in self.eval_metrics.items():
-                print(f"\n{key}:\n{value}")
-                logging.info(f"\n{key}:\n{value}")
         
         # If visualizations should be shown or saved
         is_write_dir = self.write_dir not in ["", None]
         if self.is_show or is_write_dir:
             visualizer = vis.MetricsVisualizer()
             train, eval = self.metric_dfs()
-            train_metrics = [m for m in self.train_metrics.keys() if m != "iteration"]
-            eval_metrics = [m for m in self.eval_metrics.keys() if m != "iteration"]
+            train_metrics = [m for m in self.metrics["train"].keys() if m != "iteration"]
+            eval_metrics = [m for m in self.metrics["eval"].keys() if m != "iteration"]
 
             # visualize all metrics save and/or show the plots
             for metric in train_metrics:
@@ -200,12 +255,12 @@ class MetricsExtractor():
                 
 
     def metric_dfs(self):
-        assert self.train_metrics != {}, "No training metrics have been collected yet"
-        assert self.eval_metrics != {}, "There are training metrics, but no eval metrics have been collected yet"
+        assert self.metrics["train"] != {}, "No training metrics have been collected yet"
+        assert self.metrics["eval"] != {}, "There are training metrics, but no eval metrics have been collected yet"
 
         try:
-            train_df = pd.DataFrame(data=self.train_metrics)
-            eval_df = pd.DataFrame(data=self.eval_metrics)
+            train_df = pd.DataFrame(data=self.metrics["train"])
+            eval_df = pd.DataFrame(data=self.metrics["eval"])
             if self.is_print:
                 print(train_df)
                 print(eval_df)
