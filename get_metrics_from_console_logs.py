@@ -33,6 +33,10 @@ EVAL_METRICS_REGEX = {
     "eval_avg_return": ("^# Eval average return: (.*)$", "float")
 }
 
+# This regex will be removed from the input stream
+# To disable this feature just provide an empty string
+COLOR_CODE_REGEX = "\x1b\[[0-9;]*[a-zA-Z]"
+
 class MetricsExtractor():
     def __init__(self, args):
         """
@@ -51,8 +55,6 @@ class MetricsExtractor():
             "train": {},
             "eval": {}
         }
-        self.train_metrics = {}
-        self.eval_metrics = {}
 
         # list of compiled regex patterns
         self.patterns = {
@@ -60,6 +62,21 @@ class MetricsExtractor():
             "eval": {}
         }
         self.metric_dtypes = {}
+
+        self.color_regex = re.compile(COLOR_CODE_REGEX)
+        # whether to clean the input stream or not
+        self.is_not_clean = COLOR_CODE_REGEX == ""
+
+    def clean_stream_from_color_coding(self, line):
+        """
+        Removes any color coding from the input stream of a file.
+        The file itself is not modified.
+        """
+        if self.is_not_clean:
+            return line
+        else:
+            cleaned = re.sub(self.color_regex, "", line)
+            return cleaned
 
     def cast_to(self, value, type):
         """
@@ -146,6 +163,8 @@ class MetricsExtractor():
         with open(self.file, 'r') as f:
 
             for line in f:
+                line = self.clean_stream_from_color_coding(line)
+
                 for kind_of_metric, m_dict in self.patterns.items():
                     # kind_of_metric is "train" or "eval"
                     # m_dict is a dictionary that holds the metrics(key) and a list of their values(value)
@@ -301,10 +320,7 @@ class MetricsExtractor():
                 # TOTAL:        [12.34]s
                 """)
             return
-        
 
-    def get_metrics_dicts(self):
-        return self.train_metrics, self.eval_metrics
 
 
 if __name__=='__main__':

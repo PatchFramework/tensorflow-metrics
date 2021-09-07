@@ -39,6 +39,10 @@ class MetricsVisualizer():
             self.current_legend_labels.append(legend_label)
 
     def create_plot_dir(self, dir):
+        """
+        Uses a provided existing directory and creats a subfolder based on the current timestamp.
+        This created folder can then be used to store the plots of a script run in.
+        """
         assert os.path.isdir(dir), f"Error: Dir {dir} doesn't exist"
         plot_folder = os.path.join(dir, datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         os.makedirs(plot_folder)
@@ -61,6 +65,7 @@ class MetricsVisualizer():
         # end y-axis at 130% of the max value in the plot
         if self.current_y_max is not None:
             y_max = self.current_y_max*1.3
+        # y_max is either the value calculated above or None, which lets matplotlib decide the upper limit
         plt.ylim([start_y_at, y_max])
         if self.current_x_min is not None and self.current_x_max is not None:
             # make sure the plot starts at the lowest possible coordinate
