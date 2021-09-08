@@ -59,8 +59,25 @@ class MetricsVisualizer():
         self.current_metric = None
         self.current_legend_labels = []
         # Don't clean the permanent_save_dir
+    
+    def mark_iteration(self, iteration):
+        """
+        Mark an iteration where something relevant happened.
+        """
+        current_xticks = list(plt.xticks()[0])
+        current_xticks.append(float(iteration))
+        print(current_xticks)
+        plt.xticks(current_xticks)
+        plt.gca().get_xticklabels()[-1].set_color("red")
+        
+        # check if xticks overlap
+        for tick in current_xticks:
+            delta = abs(tick - iteration)
+            if delta < 15 and delta != 0:
+                plt.xticks(current_xticks, rotation=40)
+                break
 
-    def show(self, is_show, save_dir, x_label="Iteration Number", y_label="Values", start_y_at=None):
+    def show(self, is_show, save_dir, x_label="Iteration Number", y_label="Values", start_y_at=None, mark=None):
         # apply x- and y-axis labels
         self.current_plot.set(xlabel=x_label, ylabel=y_label)
         # start y-axis at 0 for example
@@ -82,9 +99,11 @@ class MetricsVisualizer():
         if len(self.current_legend_labels) > 1:
             # use the names of the metrics in the legend
             plt.legend(labels=self.current_legend_labels)
-        else:
-            print("There is no label for this plot")
         
+        print(mark)
+        if mark is not None:
+            self.mark_iteration(mark)
+
         # if show flag is set
         if is_show:
             plt.show()
@@ -96,7 +115,7 @@ class MetricsVisualizer():
                 # create subfolder for all plots
                 self.permanent_save_dir = self.create_plot_dir(save_dir)
 
-            plot_name = "_".join(self.current_legend_labels)
+            plot_name = self.current_metric #"_".join(self.current_metric, self.current_legend_labels)
             # file extension could be set by user later
             plot_name += ".png"
             plot_file = os.path.join(self.permanent_save_dir, plot_name)

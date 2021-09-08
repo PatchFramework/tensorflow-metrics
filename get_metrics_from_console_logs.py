@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import logging
 import visualize_metrics as vis
+import copy
 
 # constants for plot labeling
 UNIT_PER_METRIC = {
@@ -51,6 +52,7 @@ class MetricsExtractor():
         self.eval_interval = args.eval_interval
         self.is_show = args.is_show
         self.write_dir = args.write_dir
+        self.mark = args.mark
 
         self.metrics = {
             "train": {},
@@ -279,11 +281,11 @@ class MetricsExtractor():
                 # visualize all metrics save and/or show the plots
                 for metric in self.visualize["train"]:
                     visualizer.add_metric_to_line_plot(self.df["train"], metric)
-                    visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+                    visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric], mark=self.mark)
 
                 for metric in self.visualize["eval"]:
                     visualizer.add_metric_to_line_plot(self.df["eval"], metric)
-                    visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric])
+                    visualizer.show(self.is_show, self.write_dir, start_y_at=0, y_label=UNIT_PER_METRIC[metric], mark=self.mark)
                 
 
     def metric_dfs(self):
@@ -368,35 +370,33 @@ if __name__=='__main__':
     parser.add_argument("-w","--write_dir", type=str, default="", help="If you set a directory here the ploted metrics are saved to that directory if it exists. Default: Nothing is saved")
     parser.add_argument("--show", dest='is_show', action='store_true', help="Set this flag if you want to get the metrics displayed in plots. Default: false")
     parser.set_defaults(show=False)
+    parser.add_argument("-m", "--mark", help="Mark a certain iteration with a red label. If labels overlap they are rotated. Deafult:None", type=int)
     args = parser.parse_args()
-
-    
 
     try:
         # create one metrics extractor object per file provided
-        extractors = [MetricsExtractor(args, use_file_idx=idx) for idx in range(len(args.file))]
+        extractors = [MetricsExtractor(copy.deepcopy(args), use_file_idx=idx) for idx in range(len(args.file))]
         print(extractors)
         for ex in extractors:
             # This will visualize and save plots if there is only one file provided
             # if there are multiple files it will just save train_df, eval_df and visualize in state
             # They can then be used to visualize the metrics from different runs in the same plot
             ex.extract()
-
         # visualize the same metrics of multiple runs in the same plot
         if len(args.file) > 1:
             visualizer = vis.MetricsVisualizer()
-            
+
             # Get info from an extractor about the metrics that should be visualized
             for kind_of_metric, metric_list in extractors[0].visualize.items(): 
                 # TODO: check if all extractors have that metric
                 # TODO: add try except
-                
+
                 for metric in metric_list:
                     # Add the metric for each extracted file to the plot
                     for ex_id, ex in enumerate(extractors):
                         # plot the train of eval df of this specific extractor, with the name of the metric and 
                         # the label (-l) that was provided together with the respective -f flag
-                        
+
                         # TODO: add try/except here
                         
                         if args.debug:
@@ -418,8 +418,9 @@ if __name__=='__main__':
                     if args.debug:
                         print(f"visualizing plot for metric {metric}")
                     logging.debug(f"visualizing plot for metric {metric}")
+
                     # visualize this metric
-                    visualizer.show(args.is_show, args.write_dir, y_label=UNIT_PER_METRIC[metric], start_y_at=0)
+                    visualizer.show(args.is_show, args.write_dir, y_label=UNIT_PER_METRIC[metric], start_y_at=0, mark=args.mark)
 
     except:
         print("Error: you need to provide at leased one console log file as input")
