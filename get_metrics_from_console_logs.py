@@ -253,8 +253,22 @@ class MetricsExtractor():
         # use the last element in train metrics iteration as the end of the evaluations
         # NOTE: this only works if the metrics are extracted in sequence it doen't work if they are extracted in parallel
         # Eval metrics iterations cannot be extracted with a regex
-        self.metrics["eval"]["iteration"] = list(range(self.eval_start_iter, self.metrics["train"]["iteration"][-1], self.eval_interval))
-
+        try:
+            amount_eval_time_metrics = len(self.metrics["eval"]["eval_time"])
+            amount_eval_avg_return_metrics = len(self.metrics["eval"]["eval_avg_return"])
+        except:
+            logging.warning("There are no eval metrics")
+        
+        # If there are same amount of eval metrics, then create the same amount of iterations
+        # Use user provided evaluation intervalls to determine which iteration the metrics belong to
+        if amount_eval_avg_return_metrics == amount_eval_time_metrics:
+            amount_eval_iterations = amount_eval_avg_return_metrics
+            # e.g. start iteration is -1, 10 evaluations were conducted in an interval of 1 eval every 5 iterations
+            # -1 + 10 * 5 = 49 <- this is the last iteration where eval takes place 
+            last_eval_iteration = self.eval_start_iter + amount_eval_iterations * self.eval_interval
+            self.metrics["eval"]["iteration"] = list(range(self.eval_start_iter, last_eval_iteration, self.eval_interval))
+        else:
+            logging.warning("The number of collected eval metrics is not identical, the eval dataframe cannot be created")
 
         if self.is_print:  
             # print the values in the dict
@@ -262,7 +276,7 @@ class MetricsExtractor():
                 logging.info(f"########## {kind_of_metric} metrics ##########")
                 print(f"########## {kind_of_metric} metrics ##########")
                 for key, value in m_dict.items():
-                    print(f"\n{key}:\n{value}")  
+                    print(f"\n{key}:\n{value}\nLength: {len(value)}")  
                     logging.info(f"\n{key}:\n{value}")
             
         
