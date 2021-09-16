@@ -23,11 +23,15 @@ class MetricsVisualizer():
         
         # Save information for x and y axis scaling
         try:
-            self.current_y_max = max(df[metric_name])
+            y_max = max(df[metric_name])
+            # set upper y_limit, if it is not set yet or if it is higher than the limit of previous graphs in same plot
+            if self.current_y_max is None or y_max > self.current_y_max:
+                self.current_y_max = y_max
             # current_y_min is not needed, because y will start at 0 (if not specified otherwise with flags)
         except:
             print("Couldn't determine upper y-axis limit")
         try:
+            # if plotting multiple graphs iterations count should be identical
             self.current_x_min, self.current_x_max = min(df["iteration"]), max(df["iteration"])
         except:
             print("Couldn't determine x-axis limits")
@@ -100,7 +104,6 @@ class MetricsVisualizer():
             # use the names of the metrics in the legend
             plt.legend(labels=self.current_legend_labels)
         
-        print(mark)
         if mark is not None:
             self.mark_iteration(mark)
 
